@@ -25,6 +25,17 @@ namespace redis::data_structures {
         ZNode(ZNode&& other) noexcept;
         ZNode& operator=(ZNode&& other) noexcept;
     };
+
+    // Компаратор для поиска по имени
+    struct NameComparator {
+        bool operator()(const HNode* node, const std::string& name) const;
+    };
+
+    // Компаратор для AVL дерева
+    struct ScoreNameComparator {
+        bool operator()(const AVLNode* lhs, const AVLNode* rhs) const;
+        bool operator()(const AVLNode* lhs, double score, const std::string& name) const;
+    };
 }
 
 #endif //REDIS_SERVER_ZSET_H
