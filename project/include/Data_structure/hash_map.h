@@ -215,8 +215,7 @@ namespace redis::data_structures {
 
         // Поиск с предоставлением ключа
         template<typename T>
-        HNode* find(const T& key, uint64_t hash,
-                    bool (*eq)(const HNode*, const T&)) {
+        HNode* find(const T& key, uint64_t hash,bool (*eq)(const HNode*, const T&)) {
             if (!eq) {
                 throw std::invalid_argument("HashMap::find: eq cannot be null");
             }
@@ -237,9 +236,8 @@ namespace redis::data_structures {
         }
 
         // Удаление узла по ключу
-        template<typename K>
-        HNode* erase(const K& key, uint64_t hash,
-                     bool (*eq)(const HNode*, const K&)) {
+        template<typename T>
+        HNode* erase(const T& key, uint64_t hash,bool (*eq)(const HNode*, const T&)) {
             if (!eq) {
                 throw std::invalid_argument("HashMap::erase: eq cannot be null");
             }
@@ -538,9 +536,8 @@ namespace redis::data_structures {
             return nullptr;
         }
         //  Поиск по произвольному ключу
-        template<typename K>
-        HNode* find_unsafe(const K& key, uint64_t hash,
-                           bool (*eq)(const HNode*, const K&)) const {
+        template<typename T>
+        HNode* find_unsafe(const T& key, uint64_t hash,bool (*eq)(const HNode*, const T&)) const {
             // Поиск в основной таблице
             if (!ht1_.empty()) {
                 size_type pos = hash & ht1_.mask;
@@ -594,9 +591,8 @@ namespace redis::data_structures {
             return nullptr;
         }
         //  Удаление по произвольному ключу
-        template<typename K>
-        HNode* erase_unsafe(const K& key, uint64_t hash,
-                            bool (*eq)(const HNode*, const K&)) {
+        template<typename T>
+        HNode* erase_unsafe(const T& key, uint64_t hash,bool (*eq)(const HNode*, const T&)) {
             // Поиск в основной таблице
             if (!ht1_.empty()) {
                 size_type pos = hash & ht1_.mask;
