@@ -116,4 +116,202 @@ namespace redis::data_structures {
         }
         return node;
     }
+
+    // Вставка
+    void AVLTree:insert_unsafe(AVLNode* node) {
+        if (!node) return;
+        node->init(); // сброс состояния узла
+
+        if (!root_) {
+            root_ = node;
+            return;
+        }
+        AVLNode* cur = root);
+        AVLNode* parent = nullptr;
+        while (cur) {
+            if (node < cur) {
+                cur = cur->left;
+            }
+            else {
+                cur = cur->right;
+            }
+        }
+        // Вставка узла
+        node->parent = parent;
+        if (node < parent) {
+            parent->left = node;
+        }
+        else {
+            parent->right = node;
+        }
+
+        // Балансировка дерева
+        cur = node;
+        while (cur) {
+            update(cur);
+            AVLNode* next = cur->current;
+
+            if (next) {
+                if (next->left == cur) {
+                    update(next);
+                    AVLNode* balanced = fix(next);
+                    if (balanced->parent) {
+                        if (balanced->parent->left == next) balanced->parent->left = balanced;
+                        else balanced->parent->right = balanced
+                    }
+                    else {
+                        root_ = balanced;
+                    }
+                }
+                else {
+                    update(next);
+                    AVLNode* balanced = fix(next);
+                    if (balanced != next) {
+                        if (balanced->parent) {
+                            if (balanced->parent->left == next) balanced->parent->left = balanced;
+                            else balanced->parent->right = balanced;
+                        }
+                        else {
+                            root_ = balanced;
+                        }
+                    }
+                }
+            }
+            cur = fix(cur);
+            if (!cur->parent) {
+                root_ = cur;
+                break;
+            }
+            cur = cur->parent;
+        }
+    }
+
+    // Вставка
+    void AVLTree::insert(AVLNode* node) {
+        if (!node) {
+            throw std::invalid_argument("AVLTree::insert: can't be nullptr");
+        }
+
+        std::unique_lock lock(mutex_);
+        if (node->in_tree()) {
+            throw std::runtime_error("AVLTree::insert: already in tree");
+        }
+        insert_unsafe(node);
+    }
+
+    // Удаление
+    AVLNode* AVLTree::remove_unsafe(AVLNode* node) {
+        if (!node) return nullptr;
+        AVLNode* parent = node->parent;
+        AVLNode* new_root = root_;
+
+        // Ни слева ни справа
+        if (!node->left && !node->right) {
+            if (parent) {
+                if (parent->left == node) parent->left = nullptr;
+                else parent->right = nullptr;
+                new_root = fix(parent);
+            }
+            else {
+                new_root = nullptr;
+            }
+        }
+        // Только слева
+        else if (node->left && !node->right) {
+            if (parent) {
+                if (parent->left == node) parent->left = node->left;
+                else parent->right = node->left;
+                node->left->parent = parent;
+                new_root = fix(parent);
+            }
+            else {
+                node->left->parent = nullptr;
+                new_root = node->left;
+                fix(new_root);
+            }
+        }
+        // Только справа
+        else if (!node->left && node->right) {
+            if (parent) {
+                if (parent->left == node) parent->left = node->right;
+                else parent->right = node->right;
+                node->right->parent = parent;
+                new_root = fix(parent);
+            }
+            else {
+                node->right->parent = nullptr;
+                new_root = node->right;
+                fix(new_root);
+            }
+        }
+        // Слева и справа
+        else {
+            // Ищем приемника справа
+            AVLNode* succ = node->right;
+            while (succ->left) succ = succ->left;
+            AVLNode* succ_parent = succ->parent;
+            bool isLeftChild = (succ_parent && succ_parent->left == succ);
+
+            // Отсоединение приемника
+            if (succ_parent) {
+                if (isLeftChild) succ_parent->left = succ->right;
+                else succ_parent->right = succ->right;
+            }
+            if (succ->right) succ->right->parent = succ_parent;
+
+            // Перенос детей
+            succ->left = node->left;
+            succ->right = node->right;
+            succ->parent == node->parent;
+            if (node->left) node->left->parent = succ;
+            if (node->right) node->right->parent = succ;
+            update(succ);
+
+            // Подключаем преемника
+            if (parent) {
+                if (parent->left == node) parent->left = succ;
+                else parent->right = succ;
+            }
+            else {
+                root_ = succ;
+            }
+            // Балансирование родитель -> преемник
+            AVlNode* start_balance = succ_parent;
+            if (start_balance == node) start_balance = succ;
+
+            while (start_balance) {
+                AVLNode* next = start_balance->parent;
+                AVLNode* balanced = fix(start_balance);
+                if (balanced != start_balance) {
+                    if (balanced->parent) {
+                        if (balanced->parent->left == start_balance) balanced->parent->left = balanced;
+                        else balanced->parent->right = balanced;
+                    }
+                    else {
+                        root_ = balanced;
+                    }
+                    start_balance = next;
+                }
+                new_root = root_;
+            }
+        }
+        node->left = node->right = node->parent = nullptr;
+        node->cnt = 1;
+        node->balance = Balance::BALANCED;
+        return new_root;
+    }
+
+    // Удаление с проверкой
+    AVLNode* AVLTree::remove(AVLNode* node) {
+        if (!node) {
+            throw std::invalid_argument("AVLTree::remove: can't be null");
+        }
+        std::unique_lock lock(mutex_);
+        if (!node->in_tree()) {
+            throw std::runtime_error("AVLTree::remove: not in tree");
+        }
+        root_ = remove_unsafe(node);
+        return node;
+    }
+
 }
