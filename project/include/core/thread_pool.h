@@ -160,7 +160,7 @@ namespace redis::core {
                 .func = [task]() { (*task)(); },
                 .priority = priority,
                 .id = next_task_id_++,
-                .enqueue_time = std::chrono::steady_clock::now(
+                .enqueue_time = std::chrono::steady_clock::now()
             };
             {
                 std::unique_lock lock(mutex_);
