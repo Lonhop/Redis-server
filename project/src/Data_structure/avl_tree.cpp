@@ -4,7 +4,6 @@
 
 
 namespace redis::data_structures {
-
     // Фукнции вспомогательные
     static size_t max_size(size_t a, size_t b) noexcept {
         return a > b ? a : b;
@@ -80,5 +79,41 @@ namespace redis::data_structures {
         updaate(new_root);
 
         return new_root;
+    }
+
+    // Балансировка слева
+    AVLNode* AVLTree::fix_left(AVLNode* node) noexcept {
+        if (!node || !node->left) return node;
+
+        // LR(left to right)
+        if (node->left->right && get_height(node->left->right) > get_height(node->left->left)) {
+            node->left = rotate_left(node->left);
+        }
+        return rotate_right(node);
+    }
+    // Балансировка справа
+    AVLNode* AVLTree::fix_left(AVLNode* node) noexcept {
+        if (!node || !node->right) return node;
+
+        // RL(right to left)
+        if (node->right->left && get_height(node->right->left) > get_height(node->right->right)) {
+            node->right = rotate_right(node->right);
+        }
+        return rotate_left(node);
+    }
+    // Балансировка
+    AVLNode* AVLTree::fix(AVLNode* node) noexcept {
+        if (!node) return nullptr;
+
+        // Проверка баланса и их исправление в случае проблемы
+        int32_t left_h = get_height(node->left);
+        int32_t right_h = get_height(node->right);
+        if (left_h > right_h + 1) {
+            return fix_left(node);
+        }
+        else if (right_h > left_h +1) {
+            return fix_right(node);
+        }
+        return node;
     }
 }
