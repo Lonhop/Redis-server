@@ -87,6 +87,57 @@ namespace redis::core {
         // Получение статистики
         ThreadPoolStats getStats() const;
 
+        void set ErrorHandler(std::function<void(std::exception_ptr)> handler); // Обработка ошибок
+
+    private:
+
+        struct Task {
+            std::function<void()> func;
+            TaskPriority priority = TaskPriority::NORMAL;
+            uint64_t id = 0; // ункальный id откладки
+
+            std::chrono::steady_clock::time_point enqueue_time;
+
+            bool operator<(const Task& other) const {
+                return priority < other.priority;
+            } // Оператор сравнения для очереди
+        };
+        // Контекст потока
+        struct ThreadContext {
+            std::thread thread;
+            std::atomic<bool> active{false};
+            std::atomic<uint64_t> task_processed{0};
+        };
+
+
+        std::vector<ThreadContext> workers_;
+        std::deque<Task> tasks_;                    // основная очередь
+        std::deque<Task> high_priority_tasks_;       // очередь высокого приоритета
+        mutable std::mutex mutex_;
+        mutable std::mutex stats_mutex_;
+        std::condition_variable cv_;
+        std::condition_variable wait_cv_;            // для waitAll
+        std::atomic<bool> stop_{false};
+        std::atomic<bool> paused_{false};
+        std::atomic<uint64_t> next_task_id_{0};
+        std::atomic<uint64_t> completed_tasks_{0};
+        std::atomic<uint64_t> failed_tasks_{0};
+        std::atomic<size_t> active_thread_count_{0};
+
+        // Конфигурация
+        ThreadPoolConfig config_;
+        size_t min_threads_ = 0;
+        size_t max_threads_ = 0;
+
+        // Обработчик ошибок
+        std::function<void(std::exception_ptr)> error_handler_;
+
+        void init(size_t numThreads);
+        void worker(ThreadContext* ctx);
+        bool stealTask(Task& task);
+        void cleaning();    // очистка ресурсов
+        void notifyAll();   // уведомление всех потоков
+
     };
 }
 
