@@ -138,6 +138,43 @@ namespace redis::core {
         void cleaning();    // очистка ресурсов
         void notifyAll();   // уведомление всех потоков
 
+        // Функция для возвращения задач без приоритета
+        template<typename T, typename... Args>
+        auto ThreadPool::enqueue(T&& f, Args&&... args) -> std::future<typename std::invoke_result_t<T, Args...>> {
+            using return_type = typename std::invoke_result<T, Args...>;
+            auto task = std::make_shared<std::packaged_task<return_type()>>(std::bind(std::forward<T>(f), std::forward<Args>(args)...));
+            std::future<return_type> result = task -> get_future();
+
+            enqueue([task]() { *task)(); });
+            return result;
+        }
+        // Функция для возвращения приоритета задачи со значением
+        template<typename T, typename... Args>
+        auto ThreadPool::enqueue(TaskPriority priority, T&& f, Args&&... args) -> std::future<typename std::invoke_result_t<T, Args...>> {
+            using return_type = typename std::invoke_result_t<T, Args...>;
+            auto task = std::make_shared<std::packaged_task<return_type()>>(std::bind(std::forward<T>(f), std::forward<Args>(args)...));
+            std::future<return_type> result = task -> get_future();
+
+            // Таблица с приоритетами
+            Task t {
+                .func = [task]() { (*task)(); },
+                .priority = priority,
+                .id = next_task_id_++,
+                ,enqueue_time = std::chrono::steady_clock::now(
+            };
+            {
+                std::unique_lock lock(mutex_);
+                if (priority >= TaskPriority::HIGH) {
+                    high_priority_tasks_.push_back(std::move(t));
+                }
+                else {
+                    tasks_.push_back(std::move(t));
+                }
+
+                cv_.notify_one();
+                return result;
+            }
+        }
     };
 }
 
