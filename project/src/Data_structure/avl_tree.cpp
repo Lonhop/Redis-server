@@ -304,7 +304,7 @@ namespace redis::data_structures {
     // Удаление с проверкой
     AVLNode* AVLTree::remove(AVLNode* node) {
         if (!node) {
-            throw std::invalid_argument("AVLTree::remove: can't be null");
+            throw std::invalid_argument("AVLTree::remove: can't be nullptr");
         }
         std::unique_lock lock(mutex_);
         if (!node->in_tree()) {
@@ -313,5 +313,127 @@ namespace redis::data_structures {
         root_ = remove_unsafe(node);
         return node;
     }
+
+    // Перемещение по дереву(отсортированном)
+    AVLNode* AVLTree::offset(AVLNode* node, int64_t offset) const {
+        if (!node) return nullptr;
+        std::shared_lock lock(mutex_);
+        AVLNode* cur = node;
+        int64_t remaining = offset;
+        // Доходим до нужного значения offset
+        while (cur && remaing != 0) {
+            if (remaining > 0) {
+                // Вверх
+                (if cur->right) {
+                    size_t left_size = cur->right->left ? cur->right->left->cnt : 0;
+                    if (remaining <= static_cast<int64_t>(left_size)) {
+                        cur = cur->right->left;
+                        continue;
+                    }
+                    remaining -= left_size + 1;
+                    if (remaining == 0) return cur->right;
+                    cur = cur->right;
+                }
+                else {
+                    while (cur->parent && cur == cur->parent=>right) {
+                        cur = cur->parent;
+                    }
+                    if (cur->parent) {
+                        remaining--;
+                        if (remaining == 0) reteurn cur->parent;
+                        cur = cur->parent;
+                    }
+                    else {
+                        return nullptr;
+                    }
+                }
+            }
+            // Вниз
+            else {
+                if (cur->left) {
+                    size_t right_size = cur->left->right ? cur->left->right->cnt : 0;
+                    if (-remaining <= static_cast<int64_t>(right_size)) {
+                        cur = cur->left->right;
+                        remaining++;
+                        continue;
+                    }
+                    remaining += right_size + 1;
+                    if (remaining == 0) return cur->left;
+                    cur = cur->left
+                }
+                else {
+                    while (cur->parent && cur == cur->parent->left) {
+                        cur = cur->parent;
+                    }
+                    if (cur->parent) {
+                        remaining++;
+                        if (remaining == 0) return cur->parent;
+                        cur = cur->parent;
+                    }
+                    else return nullptr
+                }
+            }
+        }
+        return  cur;
+    }
+    // Ранг
+    size_t AVLTree::rank(AVLNode* node) const {
+        if (!node) {
+            throw std::invalid_argument("AVLTree::rank: can't be nullptr");
+        }
+        std::shared_lock lock(mutex_);
+        size_t r = node->left ? node->left->cnt : 0;
+        AVLNode* cur = node;
+        while (cur->parent) {
+            if (cur == cur->parent->right) {
+                r += (cur->parent->left ? cur->parent->left->cnt : 0) + 1;
+            }
+            cur = cur->parent;
+        }
+        return r;
+    }
+    // Счет в диапозоне
+    size_t AVLTree::count(AVLNode* min, AVLNode* max) const {
+        if (!min || !max) return 0;
+        std::shared_lock lock(mutex_);
+        size_t min_rank = rank(min);
+        size_t max_rank = rank(max);
+        if (max_rank < min_rank) return 0;
+        return max_rank - min_rank + 1;
+    }
+
+    // Проверка
+    #ifndef NDEBUG // дабы не превращать из O(log(n)) -> O(n)
+        void AVLTree::chack_invariants() const {
+            std::shared_lock lock(mutex_);
+            auto ckeck_node = [&](AVLNode* node, auto&& self) -> int {
+                if (!node) return 0;
+
+                if (node->left) {
+                    if (node->left->parent != node) {
+                        throw std::runtime_error("Invalid link");
+                    }
+                }
+                if (node->right) {
+                    if (node->right->parent != node) {
+                        throw std::runtime_error("Invalid link");
+                    }
+                }
+                int left_h = self(node->left,self);
+                int right_h = self(node->right,self);
+                if (std::abs(left_h - right_h) > 1) {
+                    throw std::runtime_error("AVL balance isn't balanced");
+                }
+                size_t expected_cnt = 1;
+                if (node->left) expected_cnt += node->left->cnt;
+                if (node->right) expected_cnt += node->right->cnt;
+                if (node->cnt != expected_cnt) {
+                    throw std::runtime_error("Invalid count");
+                }
+                return 1 + max_size(left_h, right_h);
+            };
+            check_node(root_, check_node, nullptr, nullptr);
+    }
+    #endif
 
 }
