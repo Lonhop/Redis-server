@@ -15,6 +15,7 @@ namespace redis::data_structures::test {
             init();
         }
     };
+
     struct TestNodeWithString : public AVLNode {
         std::string key;
         std::string value;
@@ -22,6 +23,7 @@ namespace redis::data_structures::test {
             init();
         }
     };
+
     // Компаратор для поиска по ключу типа int
     struct IntKeyComparator {
         bool operator()(const AVLNode* node, int key) const {
@@ -31,6 +33,7 @@ namespace redis::data_structures::test {
             return key < static_cast<const TestNode*>(node)->key;
         }
     };
+
     // Компаратор для поиска по ключу типа string
     struct StringKeyComparator {
         bool operator()(const AVLNode* node, const std::string& key) const {
@@ -40,18 +43,21 @@ namespace redis::data_structures::test {
             return key < static_cast<const TestNodeWithString*>(node)->key;
         }
     };
+
     // Компаратор для сравнения узлов типа int
     struct IntNodeComparator {
         bool operator()(const AVLNode* a, const AVLNode* b) const {
             return static_cast<const TestNode*>(a)->key < static_cast<const TestNode*>(b)->key;
         }
     };
+
     // Компаратор для сравнения узлов типа string
     struct StringNodeComparator {
         bool operator()(const AVLNode* a, const AVLNode* b) const {
             return static_cast<const TestNodeWithString*>(a)->key < static_cast<const TestNodeWithString*>(b)->key;
         }
     };
+
     std::vector<int> collect_keys(const AVLTree& tree) {
         std::vector<int> result;
         std::function<void(AVLNode*)> traverse = [&](AVLNode* node) {
@@ -63,6 +69,7 @@ namespace redis::data_structures::test {
         traverse(tree.root());
         return result;
     }
+
     std::vector<std::string> collect_string_keys(const AVLTree& tree) {
         std::vector<std::string> result;
         std::function<void(AVLNode*)> traverse = [&](AVLNode* node) {
@@ -74,6 +81,7 @@ namespace redis::data_structures::test {
         traverse(tree.root());
         return result;
     }
+
     bool is_sorted(const std::vector<int>& vec) {
         for (size_t i = 1; i < vec.size(); ++i) {
             if (vec[i-1] > vec[i]) return false;
@@ -86,28 +94,33 @@ namespace redis::data_structures::test {
     protected:
         void SetUp() override {
             nodes.clear();
+            // Важно: создаем дерево с компаратором для int!
+            tree = AVLTree(IntNodeComparator{});
         }
+
         void TearDown() override {
             for (auto* node : nodes) {
                 delete node;
             }
         }
+
         TestNode* create_node(int key) {
             auto* node = new TestNode(key);
             nodes.push_back(node);
             return node;
         }
+
         TestNodeWithString* create_node(const std::string& key, const std::string& val = "") {
             auto* node = new TestNodeWithString(key, val);
             nodes.push_back(node);
             return node;
         }
+
         AVLTree tree;
         std::vector<AVLNode*> nodes;
     };
 
     // Тесты
-    // Вставка и размер
     TEST_F(AVLTreeTest, BasicInsertAndSize) {
         EXPECT_TRUE(tree.empty());
         EXPECT_EQ(tree.size(), 0);
@@ -118,17 +131,25 @@ namespace redis::data_structures::test {
         EXPECT_FALSE(tree.empty());
         EXPECT_EQ(tree.size(), 10);
     }
-    // Проверка на повторную вставку
+
     TEST_F(AVLTreeTest, DuplicateInsert) {
         TestNode* node1 = create_node(5);
         TestNode* node2 = create_node(5);
-        tree.insert(node1);
+
+        EXPECT_NO_THROW(tree.insert(node1));
+        EXPECT_EQ(tree.size(), 1);
+        EXPECT_TRUE(node1->in_tree());
+
         EXPECT_THROW(tree.insert(node1), std::runtime_error);
+        EXPECT_EQ(tree.size(), 1);
+
         EXPECT_NO_THROW(tree.insert(node2));
         EXPECT_EQ(tree.size(), 2);
+
+        EXPECT_TRUE(node1->in_tree());
+        EXPECT_TRUE(node2->in_tree());
     }
 
-    // Поиск элемента
     TEST_F(AVLTreeTest, FindElements) {
         std::vector<int> keys = {5, 3, 7, 2, 4, 6, 8};
         for (int k : keys) {
@@ -144,7 +165,6 @@ namespace redis::data_structures::test {
         EXPECT_EQ(tree.find(-5, cmp), nullptr);
     }
 
-    // Поиск по ключам
     TEST_F(AVLTreeTest, FindStringKeys) {
         std::vector<std::string> keys = {"apple", "banana", "cherry", "date", "fig"};
         for (const auto& k : keys) {
@@ -159,7 +179,6 @@ namespace redis::data_structures::test {
         EXPECT_EQ(tree.find("grape", cmp), nullptr);
     }
 
-    // Проверка сортировки
     TEST_F(AVLTreeTest, InOrderTraversal) {
         std::vector<int> keys = {5, 3, 8, 1, 4, 7, 9, 2, 6};
         for (int k : keys) {
@@ -171,7 +190,6 @@ namespace redis::data_structures::test {
         EXPECT_EQ(collected, keys);
     }
 
-    // Удаление листьев дерева
     TEST_F(AVLTreeTest, RemoveLeaf) {
         tree.insert(create_node(10));
         tree.insert(create_node(5));
@@ -190,7 +208,7 @@ namespace redis::data_structures::test {
         EXPECT_EQ(node5->right, nullptr);
         EXPECT_EQ(node5->parent, nullptr);
     }
-    // Удаление узла (1 преемник)
+
     TEST_F(AVLTreeTest, RemoveNodeWithOneChild) {
         tree.insert(create_node(10));
         tree.insert(create_node(5));
@@ -206,7 +224,7 @@ namespace redis::data_structures::test {
         std::vector<int> expected = {3, 10, 15};
         EXPECT_EQ(collected, expected);
     }
-    // Удаление узла (2 преемника)
+
     TEST_F(AVLTreeTest, RemoveNodeWithTwoChildren) {
         tree.insert(create_node(20));
         tree.insert(create_node(10));
@@ -226,7 +244,6 @@ namespace redis::data_structures::test {
         EXPECT_EQ(collected, expected);
     }
 
-    // Ранг
     TEST_F(AVLTreeTest, Rank) {
         std::vector<int> keys = {50, 30, 70, 20, 40, 60, 80};
         for (int k : keys) {
@@ -242,7 +259,6 @@ namespace redis::data_structures::test {
         EXPECT_EQ(tree.rank(tree.find(80, cmp)), 6);
     }
 
-    // Продвижение вперед или назад на offset
     TEST_F(AVLTreeTest, Offset) {
         std::vector<int> keys = {10, 20, 30, 40, 50, 60, 70, 80, 90};
         for (int k : keys) {
@@ -263,7 +279,6 @@ namespace redis::data_structures::test {
         EXPECT_EQ(tree.offset(node50, -5), nullptr);
     }
 
-    // Подсчет диапазона
     TEST_F(AVLTreeTest, Count) {
         std::vector<int> keys = {15, 5, 20, 3, 10, 17, 25, 1, 7, 12, 22, 30};
         for (int k : keys) {
@@ -277,7 +292,6 @@ namespace redis::data_structures::test {
         EXPECT_EQ(tree.count(min, max), 6);
     }
 
-    // Балансировка
     TEST_F(AVLTreeTest, BalanceAfterManyInserts) {
         const int NUM_KEYS = 1000;
         for (int i = 0; i < NUM_KEYS; ++i) {
@@ -294,7 +308,6 @@ namespace redis::data_structures::test {
         EXPECT_LT(height, 30);
     }
 
-    // Балансировка (после удаления)
     TEST_F(AVLTreeTest, BalanceAfterRemovals) {
         const int NUM_KEYS = 500;
         std::vector<TestNode*> created_nodes;
@@ -311,7 +324,6 @@ namespace redis::data_structures::test {
         EXPECT_TRUE(is_sorted(collected));
     }
 
-    // Удаление всех элементов
     TEST_F(AVLTreeTest, RemoveAll) {
         std::vector<int> keys = {8, 3, 10, 1, 6, 14, 4, 7, 13};
         std::vector<TestNode*> created_nodes;
@@ -328,7 +340,6 @@ namespace redis::data_structures::test {
         EXPECT_EQ(tree.root(), nullptr);
     }
 
-    // Сравнение
     TEST_F(AVLTreeTest, CompareWithStdSet) {
         const int NUM_KEYS = 500;
         std::set<int> std_set;
@@ -351,7 +362,6 @@ namespace redis::data_structures::test {
         EXPECT_TRUE(std::is_sorted(collected.begin(), collected.end()));
     }
 
-    // Потокобезопасность
     TEST_F(AVLTreeTest, ThreadSafety) {
         const int NUM_KEYS = 100;
         std::vector<TestNode*> nodes;
@@ -380,7 +390,6 @@ namespace redis::data_structures::test {
         SUCCEED();
     }
 
-    // Проверка на аргументы(валидность)
     TEST_F(AVLTreeTest, InvalidArguments) {
         EXPECT_THROW(tree.insert(nullptr), std::invalid_argument);
         EXPECT_THROW(tree.remove(nullptr), std::invalid_argument);
@@ -388,7 +397,6 @@ namespace redis::data_structures::test {
         EXPECT_EQ(tree.find(10, cmp), nullptr);
     }
 
-    // Проверка на удаление вне дерева
     TEST_F(AVLTreeTest, RemoveNodeNotInTree) {
         TestNode* node = create_node(42);
         EXPECT_THROW(tree.remove(node), std::runtime_error);
@@ -414,6 +422,4 @@ namespace redis::data_structures::test {
             }
         }
     }
-#endif
-
 }
