@@ -18,10 +18,13 @@ namespace redis::data_structures {
         HeapItem& operator=(const HeapItem&) = default;
         HeapItem& operator=(HeapItem&&) noexcept = default;
 
-        bool operator<(const HeapItem& other) const {return val < other.val; }
-        bool operator>(const HeapItem& other) const {return val > other.val; }
-        bool operator<=(const HeapItem& other) const {return val <= other.val; }
-        bool operator>=(const HeapItem& other) const {return val >= other.val; }
+        bool operator<(const HeapItem& other) const { return val < other.val; }
+        bool operator>(const HeapItem& other) const { return val > other.val; }
+        bool operator<=(const HeapItem& other) const { return val <= other.val; }
+        bool operator>=(const HeapItem& other) const { return val >= other.val; }
+        // Сравнение на равенство только по значению (ref не влияет на упорядочивание)
+        bool operator==(const HeapItem& other) const { return val == other.val; }
+        bool operator!=(const HeapItem& other) const { return !(*this == other); }
     };
 
     class Heap {
@@ -29,14 +32,13 @@ namespace redis::data_structures {
         Heap() = default;
         ~Heap() = default;
 
-        // Запрепт копирования
+        // Запрет копирования
         Heap(const Heap&) = delete;
         Heap& operator=(const Heap&) = delete;
 
         // Перемещение
         Heap(Heap&& other) noexcept;
         Heap& operator=(Heap&& other) noexcept;
-
 
         // Операции
         void push(uint64_t val, size_t* ref);
@@ -54,14 +56,13 @@ namespace redis::data_structures {
 
         // Поиск
         bool contains(size_t pos) const noexcept;
-        const HeapItem& at(size_t size) const;
+        const HeapItem& at(size_t pos) const;
         HeapItem& at(size_t pos);
 
         // Итераторы
         using iterator = std::vector<HeapItem>::iterator;
         using const_iterator = std::vector<HeapItem>::const_iterator;
 
-        // Функции доступа итераторов
         iterator begin() noexcept { return heap_.begin(); }
         iterator end() noexcept { return heap_.end(); }
         const_iterator begin() const noexcept { return heap_.begin(); }
@@ -80,7 +81,6 @@ namespace redis::data_structures {
         void down(size_t pos);
         void swap_items(size_t i, size_t j);
         void validate_pos(size_t pos) const;
-
     };
 }
 
