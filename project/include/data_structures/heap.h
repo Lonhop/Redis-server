@@ -18,16 +18,16 @@ namespace redis::data_structures {
         HeapItem& operator=(const HeapItem&) = default;
         HeapItem& operator=(HeapItem&&) noexcept = default;
 
-        bool operator<(const HeapItem& other) const {return val < other.value; }
-        bool operator>(const HeapItem& other) const {return val > other.value; }
-        bool operator<=(const HeapItem& other) const {return val <= other.value; }
-        bool operator>=(const HeapItem& other) const {return val >= other.value; }
+        bool operator<(const HeapItem& other) const {return val < other.val; }
+        bool operator>(const HeapItem& other) const {return val > other.val; }
+        bool operator<=(const HeapItem& other) const {return val <= other.val; }
+        bool operator>=(const HeapItem& other) const {return val >= other.val; }
     };
 
     class Heap {
     public:
         Heap() = default;
-        ~Heap() - default;
+        ~Heap() = default;
 
         // Запрепт копирования
         Heap(const Heap&) = delete;
@@ -50,7 +50,7 @@ namespace redis::data_structures {
         // Проверка на пустоту, получение размера и очищение
         bool empty() const noexcept { return heap_.empty(); }
         size_t size() const noexcept { return heap_.size(); }
-        void clear() noexcept { return heap_.clear(); }
+        void clear() noexcept { heap_.clear(); }
 
         // Поиск
         bool contains(size_t pos) const noexcept;
@@ -59,7 +59,7 @@ namespace redis::data_structures {
 
         // Итераторы
         using iterator = std::vector<HeapItem>::iterator;
-        using constiterator = std::vector<HeapItem>::const_iterator;
+        using const_iterator = std::vector<HeapItem>::const_iterator;
 
         // Функции доступа итераторов
         iterator begin() noexcept { return heap_.begin(); }
@@ -78,7 +78,7 @@ namespace redis::data_structures {
 
         void up(size_t pos);
         void down(size_t pos);
-        void spaw_items(size_t i, size_t j);
+        void swap_items(size_t i, size_t j);
         void validate_pos(size_t pos) const;
 
     };

@@ -87,7 +87,7 @@ namespace redis::core {
         // Получение статистики
         ThreadPoolStats getStats() const;
 
-        void set ErrorHandler(std::function<void(std::exception_ptr)> handler); // Обработка ошибок
+        void ErrorHandler(std::function<void(std::exception_ptr)> handler); // Обработка ошибок
 
     private:
 
@@ -123,6 +123,7 @@ namespace redis::core {
         std::atomic<uint64_t> completed_tasks_{0};
         std::atomic<uint64_t> failed_tasks_{0};
         std::atomic<size_t> active_thread_count_{0};
+        std::atomic<size_t> threads_to_stop_{0}; // для уменьшения пула
 
         // Конфигурация
         ThreadPoolConfig config_;
@@ -135,22 +136,23 @@ namespace redis::core {
         void init(size_t numThreads);
         void worker(ThreadContext* ctx);
         bool stealTask(Task& task);
-        void cleaning();    // очистка ресурсов
+        void shutdown();
+        void cleanup();    // очистка ресурсов
         void notifyAll();   // уведомление всех потоков
 
         // Функция для возвращения задач без приоритета
         template<typename T, typename... Args>
-        auto ThreadPool::enqueue(T&& f, Args&&... args) -> std::future<typename std::invoke_result_t<T, Args...>> {
+        auto enqueue(T&& f, Args&&... args) -> std::future<typename std::invoke_result_t<T, Args...>> {
             using return_type = typename std::invoke_result<T, Args...>;
             auto task = std::make_shared<std::packaged_task<return_type()>>(std::bind(std::forward<T>(f), std::forward<Args>(args)...));
             std::future<return_type> result = task -> get_future();
 
-            enqueue([task]() { *task)(); });
+            enqueue([task]() { (*task)(); });
             return result;
         }
         // Функция для возвращения приоритета задачи со значением
         template<typename T, typename... Args>
-        auto ThreadPool::enqueue(TaskPriority priority, T&& f, Args&&... args) -> std::future<typename std::invoke_result_t<T, Args...>> {
+        auto enqueue(TaskPriority priority, T&& f, Args&&... args) -> std::future<typename std::invoke_result_t<T, Args...>> {
             using return_type = typename std::invoke_result_t<T, Args...>;
             auto task = std::make_shared<std::packaged_task<return_type()>>(std::bind(std::forward<T>(f), std::forward<Args>(args)...));
             std::future<return_type> result = task -> get_future();
