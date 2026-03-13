@@ -11,173 +11,174 @@
 #include <future>
 #include <type_traits>
 #include <stdexcept>
+#include <chrono>
 
 namespace redis::core {
 
-    // Конфигурация пула потоков
     struct ThreadPoolConfig {
-        size_t min_threads = 0;              // минимальное число потоков
-        size_t max_threads = 0;               // максимальное число потоков
-        size_t queue_size_limit = 0;          // лимит очереди
-        std::chrono::milliseconds idle_timeout = std::chrono::seconds(60); // таймаут простоя
-        bool enable_stealing = true;           // воровство задач
+        size_t min_threads = 0;
+        size_t max_threads = 0;
+        size_t queue_size_limit = 0;
+        std::chrono::milliseconds idle_timeout = std::chrono::seconds(60);
+        bool enable_stealing = true;
     };
-    // Задачи с приоритетом
+
     enum class TaskPriority : uint8_t {
         LOW = 0,
         NORMAL = 1,
         HIGH = 2,
         CRITICAL = 3
     };
-    // Статистика пула
+
     struct ThreadPoolStats {
-        size_t active_threads = 0;  // активно работающих потоков
-        size_t idle_threads = 0;    // ожидающих потоков
-        size_t pending_tasks = 0;   // задач в очереди
-        size_t total_tasks_completed = 0;   // всего выполнено задач
-        size_t total_tasks_failed = 0;  // всего задач с ошибками
-        std::chrono::milliseconds avg_wait_time{0}; // среднее время ожидания
+        size_t active_threads = 0;
+        size_t idle_threads = 0;
+        size_t pending_tasks = 0;
+        size_t total_tasks_completed = 0;
+        size_t total_tasks_failed = 0;
+        std::chrono::milliseconds avg_wait_time{0};
     };
 
     class ThreadPool {
     public:
-        //  Пул с числом потоков
         explicit ThreadPool(size_t numThreads);
-        // Создание пула с конфигурацией
         explicit ThreadPool(const ThreadPoolConfig& config);
 
-        // Запрет Копирования
         ThreadPool(const ThreadPool&) = delete;
         ThreadPool& operator=(const ThreadPool&) = delete;
-        // Перемещение
+
         ThreadPool(ThreadPool&& other) noexcept;
         ThreadPool& operator=(ThreadPool&& other) noexcept;
-        // Деструктор
+
         ~ThreadPool();
 
-        // Добавление задачи без возвращаемого значения
+        // enqueue без future
         void enqueue(std::function<void()> task);
-        // Добавление задачи с приоритетом
         void enqueue(std::function<void()> task, TaskPriority priority);
-        // Добавление задачи с возвращаемым значением
-        template<typename F, typename... Args>
-        auto enqueue(F&& f, Args&&... args) -> std::future<typename std::invoke_result_t<F, Args...>>;
-        // Добавление задачи с возвращаемым значением и приоритетом
-        template<typename F, typename... Args>
-        auto enqueue(TaskPriority priority, F&& f, Args&&... args) -> std::future<typename std::invoke_result_t<F, Args...>>;
 
+        // enqueue с future
+        template<typename F, typename... Args>
+        auto enqueue(F&& f, Args&&... args)
+            -> std::future<std::invoke_result_t<F, Args...>>
+        {
+            using return_type = std::invoke_result_t<F, Args...>;
 
-        // Динамическое изменение числа потоков
+            auto task =
+                std::make_shared<std::packaged_task<return_type()>>(
+                    std::bind(
+                        std::forward<F>(f),
+                        std::forward<Args>(args)...));
+
+            std::future<return_type> result = task->get_future();
+
+            enqueue(std::function<void()>(
+                [task]() { (*task)(); }
+            ));
+
+            return result;
+        }
+
+        template<typename F, typename... Args>
+        auto enqueue(TaskPriority priority, F&& f, Args&&... args)
+            -> std::future<std::invoke_result_t<F, Args...>>
+        {
+            using return_type = std::invoke_result_t<F, Args...>;
+
+            auto task =
+                std::make_shared<std::packaged_task<return_type()>>(
+                    std::bind(
+                        std::forward<F>(f),
+                        std::forward<Args>(args)...));
+
+            std::future<return_type> result = task->get_future();
+
+            enqueue(
+                std::function<void()>(
+                    [task]() { (*task)(); }),
+                priority);
+
+            return result;
+        }
+
         bool resize(size_t new_size);
-        // Приостановка и возобновление обработки
         void pause();
         void resume();
-        // Очистка очереди задач
         std::vector<std::function<void()>> clear();
+        void waitAll();
+        bool waitAllFor(std::chrono::milliseconds timeout);
 
-        void waitAll(); // Ожидание завершения всех задач в очереди
-        bool waitAllFor(std::chrono::milliseconds timeout); // Ожидание завершения всех задач с таймаутом
-
-        // Проверка состояния
         bool isRunning() const noexcept { return !stop_.load(); }
         bool isPaused() const noexcept { return paused_.load(); }
-        size_t pendingTasks() const noexcept { return tasks_.size(); }
+        size_t pendingTasks() const noexcept {
+            std::lock_guard<std::mutex> lock(mutex_);
+            return tasks_.size() + high_priority_tasks_.size();
+        }
         size_t activeThreads() const noexcept;
         size_t threadCount() const noexcept { return workers_.size(); }
-        // Получение статистики
-        ThreadPoolStats getStats() const;
 
-        void ErrorHandler(std::function<void(std::exception_ptr)> handler); // Обработка ошибок
+        ThreadPoolStats getStats() const;
+        void setErrorHandler(std::function<void(std::exception_ptr)> handler);
 
     private:
-
         struct Task {
             std::function<void()> func;
-            TaskPriority priority = TaskPriority::NORMAL;
-            uint64_t id = 0; // ункальный id откладки
-
+            TaskPriority priority{TaskPriority::NORMAL};
+            uint64_t id{0};
             std::chrono::steady_clock::time_point enqueue_time;
-
-            bool operator<(const Task& other) const {
-                return priority < other.priority;
-            } // Оператор сравнения для очереди
+            bool operator<(const Task& other) const { return priority < other.priority; }
         };
-        // Контекст потока
+
         struct ThreadContext {
             std::thread thread;
             std::atomic<bool> active{false};
             std::atomic<uint64_t> task_processed{0};
+
+            ThreadContext() = default;
+            ThreadContext(ThreadContext&& other) noexcept
+                : thread(std::move(other.thread)),
+                  active(other.active.load()),
+                  task_processed(other.task_processed.load()) {}
+            ThreadContext& operator=(ThreadContext&& other) noexcept {
+                if (this != &other) {
+                    thread = std::move(other.thread);
+                    active.store(other.active.load());
+                    task_processed.store(other.task_processed.load());
+                }
+                return *this;
+            }
+            ThreadContext(const ThreadContext&) = delete;
+            ThreadContext& operator=(const ThreadContext&) = delete;
         };
 
-
-        std::vector<ThreadContext> workers_;
-        std::deque<Task> tasks_;                    // основная очередь
-        std::deque<Task> high_priority_tasks_;       // очередь высокого приоритета
+        std::deque<ThreadContext> workers_;               // изменено с vector на deque
+        std::deque<Task> tasks_;
+        std::deque<Task> high_priority_tasks_;
         mutable std::mutex mutex_;
-        mutable std::mutex stats_mutex_;
         std::condition_variable cv_;
-        std::condition_variable wait_cv_;            // для waitAll
+        std::condition_variable wait_cv_;
+
         std::atomic<bool> stop_{false};
         std::atomic<bool> paused_{false};
         std::atomic<uint64_t> next_task_id_{0};
         std::atomic<uint64_t> completed_tasks_{0};
         std::atomic<uint64_t> failed_tasks_{0};
         std::atomic<size_t> active_thread_count_{0};
-        std::atomic<size_t> threads_to_stop_{0}; // для уменьшения пула
 
-        // Конфигурация
+        // Поля, необходимые для точной статистики и уменьшения пула
+        std::atomic<size_t> busy_threads_{0};
+        std::atomic<size_t> threads_to_stop_{0};
+
         ThreadPoolConfig config_;
-        size_t min_threads_ = 0;
-        size_t max_threads_ = 0;
+        size_t min_threads_{0};
+        size_t max_threads_{0};
 
-        // Обработчик ошибок
         std::function<void(std::exception_ptr)> error_handler_;
 
         void init(size_t numThreads);
         void worker(ThreadContext* ctx);
-        bool stealTask(Task& task);
         void shutdown();
-        void cleanup();    // очистка ресурсов
-        void notifyAll();   // уведомление всех потоков
-
-        // Функция для возвращения задач без приоритета
-        template<typename T, typename... Args>
-        auto enqueue(T&& f, Args&&... args) -> std::future<typename std::invoke_result_t<T, Args...>> {
-            using return_type = typename std::invoke_result<T, Args...>;
-            auto task = std::make_shared<std::packaged_task<return_type()>>(std::bind(std::forward<T>(f), std::forward<Args>(args)...));
-            std::future<return_type> result = task -> get_future();
-
-            enqueue([task]() { (*task)(); });
-            return result;
-        }
-        // Функция для возвращения приоритета задачи со значением
-        template<typename T, typename... Args>
-        auto enqueue(TaskPriority priority, T&& f, Args&&... args) -> std::future<typename std::invoke_result_t<T, Args...>> {
-            using return_type = typename std::invoke_result_t<T, Args...>;
-            auto task = std::make_shared<std::packaged_task<return_type()>>(std::bind(std::forward<T>(f), std::forward<Args>(args)...));
-            std::future<return_type> result = task -> get_future();
-
-            // Таблица с приоритетами
-            Task t {
-                .func = [task]() { (*task)(); },
-                .priority = priority,
-                .id = next_task_id_++,
-                .enqueue_time = std::chrono::steady_clock::now()
-            };
-            {
-                std::unique_lock lock(mutex_);
-                if (priority >= TaskPriority::HIGH) {
-                    high_priority_tasks_.push_back(std::move(t));
-                }
-                else {
-                    tasks_.push_back(std::move(t));
-                }
-
-                cv_.notify_one();
-                return result;
-            }
-        }
     };
+
 }
 
 #endif
