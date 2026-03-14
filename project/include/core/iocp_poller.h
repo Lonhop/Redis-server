@@ -84,7 +84,6 @@ namespace redis::core {
         uint64_t totalEvents() const noexcept override { return total_events_.load(); }
         DWORD lastError() const noexcept override { return last_error_; }
         void resetError() noexcept override { last_error_ = 0; }
-
     private:
         HANDLE iocp_;
         HANDLE timer_queue_;

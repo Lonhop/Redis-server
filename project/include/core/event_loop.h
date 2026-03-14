@@ -57,6 +57,7 @@ namespace redis::core {
         void* user_data = nullptr;
         bool is_socket = true;
     };
+
     using EventHandler = std::function<void(const EventData& event)>;
     using TimerHandler = std::function<void(uint64_t timer_id)>;
     struct EventLoopConfig {
@@ -96,5 +97,4 @@ namespace redis::core {
     };
     std::unique_ptr<EventLoop> createEventLoop(LoopType type = LoopType::DEFAULT);
 }
-
 #endif

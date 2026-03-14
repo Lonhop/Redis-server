@@ -32,5 +32,6 @@ namespace redis::core {
         std::vector<std::unique_ptr<Connection>> connections_;
         bool stopped_ = true;
     };
+
 }
 #endif

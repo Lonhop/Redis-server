@@ -116,4 +116,5 @@ namespace redis::core {
             LOG_DEBUG("Connection removed");
         }
     }
+
 }

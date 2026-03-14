@@ -201,5 +201,4 @@ namespace redis::core {
             close();
         }
     }
-
 }

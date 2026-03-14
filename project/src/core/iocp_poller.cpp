@@ -542,6 +542,7 @@ namespace redis::core {
             }
         }
     }
+
     void IocpPoller::stop() noexcept {
         running_.store(false);
         PostQueuedCompletionStatus(iocp_, 0, 0, nullptr);

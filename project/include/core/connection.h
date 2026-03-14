@@ -25,7 +25,6 @@ namespace redis::core {
         void onReadable();
         void onWritable();
         void onTimer(uint64_t timer_id);
-
     private:
         int fd_;
         EventLoop& loop_;
