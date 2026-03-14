@@ -1,6 +1,10 @@
-#ifndef REDIS_SERVER_TCP_SERVER_H
-#define REDIS_SERVER_TCP_SERVER_H
+#ifndef REDIS_CORE_TCP_SERVER_H
+#define REDIS_CORE_TCP_SERVER_H
 
+
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
 #include <vector>
 #include <memory>
 #include <functional>
@@ -18,14 +22,15 @@ namespace redis::core {
         void start();
         void stop();
         size_t connection_count() const { return connections_.size(); }
+        void handleAccept(EventData event);
+
     private:
-        void on_accept(EventData event);
         void remove_connection(Connection* conn);
         EventLoop& loop_;
-        int listen_fd_;
+        SOCKET listen_fd_;
         ConnectionFactory factory_;
         std::vector<std::unique_ptr<Connection>> connections_;
-        bool stopped_ = false;
+        bool stopped_ = true;
     };
 }
 #endif

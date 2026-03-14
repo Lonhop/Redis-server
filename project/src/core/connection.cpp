@@ -1,16 +1,37 @@
 #include "core/connection.h"
-#include "core/serialization.h"
-#include "core/commands.h"
 #include "utils/logger.h"
 #include "utils/raii_helpers.h"
-#include <unistd.h>
-#include <sys/socket.h>
-#include <system_error>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
+
+namespace {
+    std::vector<std::string> resp_to_args(const std::string& resp) {
+        std::vector<std::string> result;
+        size_t pos = 0;
+        if (resp.empty() || resp[0] != '*') return result;
+        pos = 1;
+        size_t n = std::stoul(resp.substr(pos));
+        pos = resp.find("\r\n", pos) + 2;
+        for (size_t i = 0; i < n; ++i) {
+            if (pos >= resp.size()) break;
+            if (resp[pos] != '$') break;
+            pos++;
+            size_t len = std::stoul(resp.substr(pos));
+            pos = resp.find("\r\n", pos) + 2;
+            result.emplace_back(resp.substr(pos, len));
+            pos += len + 2;
+        }
+        return result;
+    }
+}
 
 namespace redis::core {
-    Connection::Connection(int fd, EventLoop& loop, ThreadPool& tp, data_structures::HashMap& db, utils::TimerQueue& timers) : fd_(fd), loop_(loop), threadPool_(tp), db_(db), timerQueue_(timers), deadlineTimer_() {
+    constexpr size_t K_MAX_MSG = 1024 * 1024;
+    constexpr auto K_IDLE_TIMEOUT = std::chrono::seconds(60);
+    Connection::Connection(int fd, EventLoop& loop, KeyValueStore& store)
+        : fd_(fd), loop_(loop), store_(store) {
         readBuf_.resize(4096);
-        state_ = State::READ;
         refreshIdleTimer();
         LOG_DEBUG("Connection created");
     }
@@ -19,22 +40,24 @@ namespace redis::core {
     }
     void Connection::start() {
         if (!loop_.addSocket(fd_, SocketMode::READ, reinterpret_cast<uintptr_t>(this))) {
-            LOG_ERROR("Failed to add socket");
+            LOG_ERROR("Failed to add socket to event loop");
             close();
         }
     }
     void Connection::close() {
-        if (state_ == State::CLOSED) return;
-        utils::ScopedFlag closingFlag(stateClosed_ ? &stateClosed_ : nullptr, true);
-        state_ = State::CLOSED;
+        if (closed_) return;
+        closed_ = true;
         loop_.removeSocket(fd_);
-        ::close(fd_);
+        if (fd_ >= 0) {
+            closesocket(static_cast<SOCKET>(fd_));
+            fd_ = -1;
+        }
         cancelIdleTimer();
         LOG_DEBUG("Connection closed");
     }
     void Connection::refreshIdleTimer() {
         cancelIdleTimer();
-        idleTimerId_ = loop_.createTimer(redis::config::K_IDLE_TIMEOUT_MS, false);
+        idleTimerId_ = loop_.createTimer(K_IDLE_TIMEOUT, false);
         if (idleTimerId_ == 0) {
             LOG_WARN("Failed to create idle timer");
         }
@@ -46,20 +69,26 @@ namespace redis::core {
         }
     }
     void Connection::onReadable() {
-        if (state_ == State::CLOSED) return;
+        if (closed_) return;
         refreshIdleTimer();
-        ssize_t n = read(fd_, readBuf_.data() + readEnd_, readBuf_.size() - readEnd_);
-        if (n <= 0) {
-            if (n == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
+        int n = recv(static_cast<SOCKET>(fd_), readBuf_.data() + readEnd_, static_cast<int>(readBuf_.size() - readEnd_), 0);
+        if (n == SOCKET_ERROR) {
+            int err = WSAGetLastError();
+            if (err != WSAEWOULDBLOCK) {
+                LOG_ERROR("recv failed");
                 close();
             }
+            return;
+        }
+        if (n == 0) {
+            close();
             return;
         }
         readEnd_ += n;
         processInput();
     }
     void Connection::processInput() {
-        while (state_ == State::READ) {
+        while (!closed_) {
             std::vector<std::string> cmd;
             if (!tryParseRequest(cmd)) break;
             std::vector<char> out;
@@ -68,19 +97,24 @@ namespace redis::core {
         }
     }
     bool Connection::tryParseRequest(std::vector<std::string>& cmd) {
-        if (readEnd_ - readPos_ < 4) return false;
-        uint32_t len = 0;
-        std::memcpy(&len, readBuf_.data() + readPos_, 4);
-        if (len > K_MAX_MSG) {
-            LOG_ERROR("Request too long");
-            throw std::runtime_error("Request too long");
+        std::string input(readBuf_.data() + readPos_, readEnd_ - readPos_);
+        size_t pos = input.find("\r\n");
+        if (pos == std::string::npos) return false;
+        if (input[0] != '*') {
+            LOG_ERROR("Invalid RESP format");
+            close();
+            return false;
         }
-        if (readEnd_ - readPos_ < 4 + len) return false;
-        if (!parse_req(reinterpret_cast<const uint8_t*>(readBuf_.data() + readPos_ + 4), len, cmd)) {
-            LOG_ERROR("Bad request format");
-            throw std::runtime_error("Bad request format");
+        size_t msg_len = input.find("\r\n", pos + 2);
+        if (msg_len == std::string::npos) return false;
+        msg_len += 2;
+        cmd = resp_to_args(input.substr(0, msg_len));
+        if (cmd.empty()) {
+            LOG_ERROR("Failed to parse command");
+            close();
+            return false;
         }
-        readPos_ += 4 + len;
+        readPos_ += msg_len;
         if (readPos_ == readEnd_) {
             readPos_ = readEnd_ = 0;
         }
@@ -91,33 +125,34 @@ namespace redis::core {
         }
         return true;
     }
+
     void Connection::executeCommand(const std::vector<std::string>& cmd, std::vector<char>& out) {
-        utils::ScopedCounter statsCounter(threadPool_.getStats().active_commands);
         try {
-            auto& factory = CommandFactory::instance();
-            auto command = factory.create(cmd[0], db_, threadPool_, timerQueue_);
+            auto command = create_command(cmd[0], store_);
             if (!command) {
-                serialization::encode_error(out, ErrorCode::UNKNOWN_CMD, "Unknown command");
+                out = RespSerializer::error("ERR unknown command").str();
                 return;
             }
-            command->execute(cmd, out);
-        }
-        catch (const std::exception& e) {
+            RespValue result = command->execute(cmd);
+            out = result.serialize();
+        } catch (const std::exception& e) {
             LOG_ERROR("Command execution failed");
-            serialization::encode_error(out, ErrorCode::INTERNAL, "Internal server error");
+            out = RespSerializer::error("ERR internal error").str();
         }
     }
     void Connection::sendResponse(std::vector<char>&& data) {
-        if (state_ == State::CLOSED) return;
+        if (closed_) return;
         if (writeBuf_.empty()) {
-            ssize_t n = write(fd_, data.data(), data.size());
-            if (n < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            int n = send(static_cast<SOCKET>(fd_), data.data(), static_cast<int>(data.size()), 0);
+            if (n == SOCKET_ERROR) {
+                int err = WSAGetLastError();
+                if (err == WSAEWOULDBLOCK) {
                     writeBuf_ = std::move(data);
                     writeSent_ = 0;
                     loop_.updateSocket(fd_, SocketMode::READ | SocketMode::WRITE);
                 }
                 else {
+                    LOG_ERROR("send failed");
                     close();
                 }
             }
@@ -132,16 +167,22 @@ namespace redis::core {
             loop_.updateSocket(fd_, SocketMode::READ | SocketMode::WRITE);
         }
     }
+
     void Connection::onWritable() {
-        if (state_ == State::CLOSED) return;
+        if (closed_) return;
         refreshIdleTimer();
         if (writeBuf_.empty()) {
             loop_.updateSocket(fd_, SocketMode::READ);
             return;
         }
-        ssize_t n = write(fd_, writeBuf_.data() + writeSent_, writeBuf_.size() - writeSent_);
-        if (n < 0) {
-            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+        int n = send(static_cast<SOCKET>(fd_),
+                     writeBuf_.data() + writeSent_,
+                     static_cast<int>(writeBuf_.size() - writeSent_),
+                     0);
+        if (n == SOCKET_ERROR) {
+            int err = WSAGetLastError();
+            if (err != WSAEWOULDBLOCK) {
+                LOG_ERROR("send failed");
                 close();
             }
             return;
@@ -153,10 +194,12 @@ namespace redis::core {
             loop_.updateSocket(fd_, SocketMode::READ);
         }
     }
+
     void Connection::onTimer(uint64_t timer_id) {
         if (timer_id == idleTimerId_) {
             LOG_INFO("Connection timeout");
             close();
         }
     }
+
 }
