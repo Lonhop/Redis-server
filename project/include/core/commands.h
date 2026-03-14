@@ -8,8 +8,6 @@
 
 namespace redis::core {
 
-// below are the commands themselves
-
 // save data to the store so we can find it later
 class SetCommand final : public Command {
 public:
@@ -40,12 +38,6 @@ public:
 private:
     std::vector<std::string> keys_;
 };
-
-// setup the data storage where all the magic happens
-KeyValueStore make_command_store();
-
-// wipe everything in that storage and start over with a clean slate
-void clear_command_store(KeyValueStore& store);
 
 // turn raw strings into a command object
 // basically caveman magic to make the server do work

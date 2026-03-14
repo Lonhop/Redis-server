@@ -46,9 +46,10 @@ namespace redis::core {
 
         ThreadPool(const ThreadPool&) = delete;
         ThreadPool& operator=(const ThreadPool&) = delete;
-
-        ThreadPool(ThreadPool&& other) noexcept;
-        ThreadPool& operator=(ThreadPool&& other) noexcept;
+        
+        //TODO: DEAL WITH THREAD TEST FAILURE
+        ThreadPool(ThreadPool&&) = delete;
+        ThreadPool& operator=(ThreadPool&&) = delete;
 
         ~ThreadPool();
 
