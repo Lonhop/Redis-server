@@ -23,7 +23,6 @@ namespace redis::core {
         void stop();
         size_t connection_count() const { return connections_.size(); }
         void handleAccept(EventData event);
-
     private:
         void remove_connection(Connection* conn);
         EventLoop& loop_;

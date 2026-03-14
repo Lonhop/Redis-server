@@ -194,7 +194,6 @@ namespace redis::core {
             loop_.updateSocket(fd_, SocketMode::READ);
         }
     }
-
     void Connection::onTimer(uint64_t timer_id) {
         if (timer_id == idleTimerId_) {
             LOG_INFO("Connection timeout");
