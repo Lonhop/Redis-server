@@ -25,44 +25,44 @@ namespace redis::core {
     ThreadPool::~ThreadPool() {
         shutdown();
     }
-    ThreadPool::ThreadPool(ThreadPool&& other) noexcept
-        : workers_(std::move(other.workers_))
-        , tasks_(std::move(other.tasks_))
-        , high_priority_tasks_(std::move(other.high_priority_tasks_))
-        , stop_(other.stop_.load())
-        , paused_(other.paused_.load())
-        , next_task_id_(other.next_task_id_.load())
-        , completed_tasks_(other.completed_tasks_.load())
-        , failed_tasks_(other.failed_tasks_.load())
-        , active_thread_count_(other.active_thread_count_.load())
-        , busy_threads_(other.busy_threads_.load())
-        , threads_to_stop_(other.threads_to_stop_.load())
-        , config_(std::move(other.config_))
-        , min_threads_(other.min_threads_)
-        , max_threads_(other.max_threads_)
-        , error_handler_(std::move(other.error_handler_)) {}
+    // ThreadPool::ThreadPool(ThreadPool&& other) noexcept
+    //     : workers_(std::move(other.workers_))
+    //     , tasks_(std::move(other.tasks_))
+    //     , high_priority_tasks_(std::move(other.high_priority_tasks_))
+    //     , stop_(other.stop_.load())
+    //     , paused_(other.paused_.load())
+    //     , next_task_id_(other.next_task_id_.load())
+    //     , completed_tasks_(other.completed_tasks_.load())
+    //     , failed_tasks_(other.failed_tasks_.load())
+    //     , active_thread_count_(other.active_thread_count_.load())
+    //     , busy_threads_(other.busy_threads_.load())
+    //     , threads_to_stop_(other.threads_to_stop_.load())
+    //     , config_(std::move(other.config_))
+    //     , min_threads_(other.min_threads_)
+    //     , max_threads_(other.max_threads_)
+    //     , error_handler_(std::move(other.error_handler_)) {}
 
-    ThreadPool& ThreadPool::operator=(ThreadPool&& other) noexcept {
-        if (this != &other) {
-            shutdown();
-            workers_ = std::move(other.workers_);
-            tasks_ = std::move(other.tasks_);
-            high_priority_tasks_ = std::move(other.high_priority_tasks_);
-            stop_.store(other.stop_.load());
-            paused_.store(other.paused_.load());
-            next_task_id_.store(other.next_task_id_.load());
-            completed_tasks_.store(other.completed_tasks_.load());
-            failed_tasks_.store(other.failed_tasks_.load());
-            active_thread_count_.store(other.active_thread_count_.load());
-            busy_threads_.store(other.busy_threads_.load());
-            threads_to_stop_.store(other.threads_to_stop_.load());
-            config_ = std::move(other.config_);
-            min_threads_ = other.min_threads_;
-            max_threads_ = other.max_threads_;
-            error_handler_ = std::move(other.error_handler_);
-        }
-        return *this;
-    }
+    // ThreadPool& ThreadPool::operator=(ThreadPool&& other) noexcept {
+    //     if (this != &other) {
+    //         shutdown();
+    //         workers_ = std::move(other.workers_);
+    //         tasks_ = std::move(other.tasks_);
+    //         high_priority_tasks_ = std::move(other.high_priority_tasks_);
+    //         stop_.store(other.stop_.load());
+    //         paused_.store(other.paused_.load());
+    //         next_task_id_.store(other.next_task_id_.load());
+    //         completed_tasks_.store(other.completed_tasks_.load());
+    //         failed_tasks_.store(other.failed_tasks_.load());
+    //         active_thread_count_.store(other.active_thread_count_.load());
+    //         busy_threads_.store(other.busy_threads_.load());
+    //         threads_to_stop_.store(other.threads_to_stop_.load());
+    //         config_ = std::move(other.config_);
+    //         min_threads_ = other.min_threads_;
+    //         max_threads_ = other.max_threads_;
+    //         error_handler_ = std::move(other.error_handler_);
+    //     }
+    //     return *this;
+    // }
     void ThreadPool::init(size_t numThreads) {
         for (size_t i = 0; i < numThreads; ++i) {
             workers_.emplace_back();

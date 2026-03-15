@@ -11,6 +11,7 @@
 #include <fstream>
 #include <memory>
 #include <chrono>
+#include <format>
 
 namespace redis::utils {
     // Настраиваемый уровень логирования

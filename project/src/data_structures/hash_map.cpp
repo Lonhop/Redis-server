@@ -1,6 +1,7 @@
 #include "data_structures/hash_map.h"
 #include "utils/logger.h"
 #include <iostream>
+#include <functional>
 
 namespace redis::data_structures {
     HTab::HTab(size_t n) {
@@ -117,3 +118,13 @@ namespace redis::data_structures {
     }
     template class HashMap<std::function<bool(const HNode*, const HNode*)>, std::function<uint64_t(const void*, size_t)>>;
 }
+
+template class redis::data_structures::HashMap<
+    std::function<bool(const redis::data_structures::HNode*, const redis::data_structures::HNode*)>,
+    std::function<uint64_t(const void*, size_t)>
+>;
+
+template class redis::data_structures::HashMap<
+    bool (*)(const redis::data_structures::HNode*, const redis::data_structures::HNode*),
+    uint64_t (*)(const void*, size_t)
+>;

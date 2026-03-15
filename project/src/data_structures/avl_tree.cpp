@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <stdexcept>
 #include <cstdlib>
+#include <mutex>
 
 namespace redis::data_structures {
 
